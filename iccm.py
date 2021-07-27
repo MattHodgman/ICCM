@@ -16,7 +16,6 @@ Process:
 
 import argparse
 import pandas as pd
-from sklearn.metrics import jaccard_score
 
 '''
 Parse arguments.
@@ -72,26 +71,72 @@ def getData(file):
 
 
 '''
-Compute all pairwise comparisons of clusters from two methods
+Compute the jaccard index of two clusters (sets of samples).
 '''
-def getComparisons(clusters1, clusters2):
-    pass
+def jaccard_index(cluster1, cluster2):
+    i = len(cluster1.intersection(cluster2))
+    u = len(cluster1.union(cluster2))
+    jaccard_index = i / u
+    return jaccard_index
 
 
 '''
-Compute the jaccard index of two clusters (sets)
+Get the method that has the fewest (min) clusters. If there is a tie, just use the method whose column comes first
 '''
-def jaccard(cluster1, cluster2):
-    # return jaccard_score(cluster1, cluster2)
-    # OR
-    # i = len(cluster1.intersection(cluster2))
-    # u = len(cluster1.union(cluster2))
-    # jaccard_index = i / u
-    # return jaccard_index
-    pass
+def getMinMethod(cluster_table):
+    min = len(cluster_table) # start with the min at the number of cells
+    min_method = '' # the method with the fewest clusters
+
+    # iterate through methods 
+    for method in cluster_table.columns:
+        num_clusters = len(pd.unique(cluster_table[method])) # calucate the number of clusters
+        if num_clusters < min: # if min, update values
+            min_method = method
+            min = num_clusters
+
+    return min_method
 
 
+'''
+Construct a confusion matrix from clusters from different methods.
+'''
+def getMatrix(min_clusters_table, m_clusters_table):
+    min_clusters = pd.unique(min_clusters_table) # get a list of all cluster labels from the min method (min)
+    m_clusters = pd.unique(m_clusters_table) # get a list of all cluster labels from the other method (m)
 
+    matrix = {} # save the matrix as a dict
+    for c1 in min_clusters:
+        for c2 in m_clusters:
+            set1 = set(min_clusters_table[min_clusters_table == c1].index)
+            set2 = set(m_clusters_table[m_clusters_table == c2].index)
+            matrix[(c1,c2)] = jaccard_index(set1, set2)
+
+    return matrix
+
+
+'''
+Get clustering method re-labeling key
+'''
+def getNewLabels(min_clusters_table, m_clusters_table):
+    label_key = {} # a dict where the key is the cluster label in the 'm' method and the value is the cluster label in the 'min' method that has the highest jaccard index
+
+    # lists of cluster labels in each method
+    m_clusters = pd.unique(cluster_table[m])
+    min_clusters = pd.unique(cluster_table[min_method])
+
+    # for every cluster label in the method, find the most similar cluster label in the min method (using jaccard index)
+    for c_label1 in m_clusters:
+        indices = {}
+        for c_label2 in min_clusters:
+            c_label1_items = set(m_clusters_table[m_clusters_table == c_label1].index)
+            c_label2_items = set(min_clusters_table[min_clusters_table == c_label2].index)
+            i = jaccard_index(c_label1_items, c_label2_items)
+            indices[i] = c_label2
+        max_index = max(indices.keys()) # find the largest jaccard index
+        label_match =  indices[max_index] # get the label in the min method with that max jaccard index
+        label_key[c_label1] = label_match # add to key dict
+    
+    return label_key
 
 
 '''
@@ -124,4 +169,11 @@ if __name__ == '__main__':
         else:
             print(f'{file} is incorrectly formatted.')
 
-    
+    # compare all methods against the one with the least number of clusters
+    min_method = getMinMethod(cluster_table) # get the method with the fewest number of clusters to compare all others against
+    methods = list(cluster_table.columns) # get list of methods
+    methods.remove(min_method) # remove min method because we will not compare it against itself
+
+    for m in methods:
+        label_key = getNewLabels(cluster_table[min_method], cluster_table[m]) # a dict where the key is the cluster label in the 'm' method and the value is the cluster label in the 'min' method that has the highest jaccard index
+        cluster_table[m].replace(label_key, inplace=True) # relabel clusters
