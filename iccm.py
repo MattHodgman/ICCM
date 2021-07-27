@@ -16,14 +16,17 @@ Process:
 
 import argparse
 import pandas as pd
+from collections import Counter
+import numpy as np
 
 '''
 Parse arguments.
 '''
 def parseArgs():
     parser = argparse.ArgumentParser(description='Implementation of the consensus clustering method proposed in https://www.sciencedirect.com/science/article/pii/S131915781930597X.')
-    parser.add_argument('-i', '--input', help='Input cell cluster assignment files.', nargs='*', action="store", dest="input", required=True)
+    parser.add_argument('-i', '--input', help='Input cell cluster assignment files.', nargs='*', action='store', dest='input', required=True)
     parser.add_argument('-o', '--output', help='The directory to which output files will be saved.', type=str, required=False)
+    parser.add_argument('-c', '--id', help='The name of the column that contains the item ID.', type=str, required=True)
     args = parser.parse_args()
     return args
 
@@ -50,7 +53,7 @@ Look at first line of an in input file (the header of the csv) to assess if it i
 def validInput(file):
 
     # definition of the columns needed to constitute a valid input file
-    NEEDED_COLUMNS = [CELLID, CLUSTER, METHOD]
+    NEEDED_COLUMNS = [id, CLUSTER, METHOD]
 
     input_columns = getHeader(file) # get input file header columns
     valid = all(col in input_columns for col in NEEDED_COLUMNS) # check if all needed columns are present in input columns list
@@ -63,7 +66,7 @@ Read file into dataframe.
 '''
 def getData(file):
 
-    data = pd.read_csv(file, delimiter=',', index_col=CELLID) # load data from input csv into dataframe
+    data = pd.read_csv(file, delimiter=',', index_col=id) # load data from input csv into dataframe
     method = data[METHOD].iloc[0] # get method name from first row (this is assuming at all rows are from the same method) NOTE: we may not want to assume this!!
     data = data.drop(METHOD, axis=1) # drop method column
     
@@ -121,8 +124,8 @@ def getNewLabels(min_clusters_table, m_clusters_table):
     label_key = {} # a dict where the key is the cluster label in the 'm' method and the value is the cluster label in the 'min' method that has the highest jaccard index
 
     # lists of cluster labels in each method
-    m_clusters = pd.unique(cluster_table[m])
-    min_clusters = pd.unique(cluster_table[min_method])
+    m_clusters = pd.unique(m_clusters_table)
+    min_clusters = pd.unique(min_clusters_table)
 
     # for every cluster label in the method, find the most similar cluster label in the min method (using jaccard index)
     for c_label1 in m_clusters:
@@ -140,17 +143,61 @@ def getNewLabels(min_clusters_table, m_clusters_table):
 
 
 '''
+Get the cluster label that has the majority vote
+'''
+def vote(labels):
+    c = Counter(labels) # count the most common label
+
+    # check for majority
+    label, count = c.most_common()[0] # get most common label and its count
+    freq = count / len(labels) # the frequency of the most common label
+
+    if freq > 0.5:
+        return label # return mode label if it has majority
+    else:
+        return np.nan # if it is a tie return NaN
+
+
+'''
+Consensus cluster.
+'''
+def consensusCluster(cluster_table):
+
+    # compare all methods against the one with the least number of clusters
+    min_method = getMinMethod(cluster_table) # get the method with the fewest number of clusters to compare all others against
+    methods = list(cluster_table.columns) # get list of methods
+    methods.remove(min_method) # remove min method because we will not compare it against itself
+
+    for m in methods:
+        label_key = getNewLabels(cluster_table[min_method], cluster_table[m]) # a dict where the key is the cluster label in the 'm' method and the value is the cluster label in the 'min' method that has the highest jaccard index
+        # cluster_table[m].replace(label_key, inplace=True) # relabel clusters SLOWER
+        cluster_table[m] = cluster_table[m].map(label_key).fillna(cluster_table[m]) # relabel clusters FASTER
+
+    # vote
+    consensus_labels = [vote(row) for row in cluster_table.to_numpy()] # a list of clusters labels (or nan) ordered for each item ID in cluster_table
+    cluster_table[CONSENSUS] = consensus_labels # add results to table
+    return cluster_table
+
+    # make dict with key = index (aka item ID) and value is consensus cluster label
+    # consensus_results = dict(zip(cluster_table.index, consensus_labels))
+    # return consensus_results
+    
+
+
+'''
 Main.
 '''
 if __name__ == '__main__':
 
     # constants
-    CELLID = 'CellID' # the header of the cell ID column
     CLUSTER = 'Cluster' # the header of the cluster assignmnet column
     METHOD = 'Method' # the header of the method column
+    CONSENSUS = 'Consensus' # the header of the consensus cluster label
 
     # parse arguments
     args = parseArgs()
+
+    id = args.id # the header of the sample/cell/drug/item ID column
 
     # get user-defined output dir (strip last slash if present) or set to current
     if args.output is None:
@@ -159,6 +206,7 @@ if __name__ == '__main__':
         output = args.output[:-1]
     else:
         output = args.output
+
 
     # if input file has correct format, make a matrix from it
     cluster_table = pd.DataFrame() # a df where cell ID is the index and each column is the cluster assignment from a different algorithm
@@ -169,11 +217,12 @@ if __name__ == '__main__':
         else:
             print(f'{file} is incorrectly formatted.')
 
-    # compare all methods against the one with the least number of clusters
-    min_method = getMinMethod(cluster_table) # get the method with the fewest number of clusters to compare all others against
-    methods = list(cluster_table.columns) # get list of methods
-    methods.remove(min_method) # remove min method because we will not compare it against itself
+    # res = consensusCluster(cluster_table)
+    # cluster_table[CONSENSUS] = cluster_table.index
+    # cluster_table[CONSENSUS] = cluster_table[CONSENSUS].map(res).fillna(cluster_table[CONSENSUS])
 
-    for m in methods:
-        label_key = getNewLabels(cluster_table[min_method], cluster_table[m]) # a dict where the key is the cluster label in the 'm' method and the value is the cluster label in the 'min' method that has the highest jaccard index
-        cluster_table[m].replace(label_key, inplace=True) # relabel clusters
+    sub_cluster_table = consensusCluster(cluster_table) 
+    cluster_table.loc[sub_cluster_table.index] = sub_cluster_table
+    # cluster_table.combine_first(sub_cluster_table) # ALTERNATIVE METHOD. NOT SURE WHICH IS FASTER
+
+    print(cluster_table)
