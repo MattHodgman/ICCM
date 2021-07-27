@@ -1,23 +1,9 @@
-'''
-
-Process:
-
-1. get cluster assignments df (already done in silhouette.py and celluster.py) -> find more clusters than optimal
-2. essentially compute the jaccard indices for each pairwise comparison of clustering methods
-    - thus for each pair of methods, compare all clusters against each other to find the number of cells that are in common divided by the number of total cells
-    - jaccard index = intersection / union
-    - then for each cluster, just pick the one in the other method that has the highest jaccard index
-    - relabel the clusters for that method
-3. now do the voting and assign cells to clusters if the majority of the methods agree on the cluster label
-4. repeat on the points that are 'outliers' and then somehow combine them
-
-'''
-
-
 import argparse
 import pandas as pd
 from collections import Counter
 import numpy as np
+import os
+
 
 '''
 Parse arguments.
@@ -27,9 +13,19 @@ def parseArgs():
     parser.add_argument('-i', '--input', help='Input cell cluster assignment files.', nargs='*', action='store', dest='input', required=True)
     parser.add_argument('-o', '--output', help='The directory to which output files will be saved.', type=str, required=False)
     parser.add_argument('-c', '--id', help='The name of the column that contains the item ID.', type=str, required=True)
+    parser.add_argument('-d', '--data', help='The orignal file that was used for clustering.', type=str, required=True)
+    parser.add_argument('-t', '--tab', help='Flag to indicate that input files are tab delimited.', action='store_true', required=False)
     args = parser.parse_args()
     return args
 
+
+'''
+Get input data file name
+'''
+def getDataName(path):
+    fileName = path.split('/')[-1] # get filename from end of input path
+    dataName = fileName[:fileName.rfind('.')] # get data name by removing extension from file name
+    return dataName
 
 '''
 Get the header from an input csv file.
@@ -42,7 +38,7 @@ def getHeader(file):
     f.close()
 
     # get the input file column headers as list
-    header_columns = header.split(',')
+    header_columns = header.split(delimiter)
 
     return header_columns
 
@@ -66,7 +62,7 @@ Read file into dataframe.
 '''
 def getData(file):
 
-    data = pd.read_csv(file, delimiter=',', index_col=id) # load data from input csv into dataframe
+    data = pd.read_csv(file, delimiter=delimiter, index_col=id) # load data from input csv into dataframe
     method = data[METHOD].iloc[0] # get method name from first row (this is assuming at all rows are from the same method) NOTE: we may not want to assume this!!
     data = data.drop(METHOD, axis=1) # drop method column
     
@@ -98,23 +94,6 @@ def getMinMethod(cluster_table):
             min = num_clusters
 
     return min_method
-
-
-'''
-Construct a confusion matrix from clusters from different methods.
-'''
-# def getMatrix(min_clusters_table, m_clusters_table):
-#     min_clusters = pd.unique(min_clusters_table) # get a list of all cluster labels from the min method (min)
-#     m_clusters = pd.unique(m_clusters_table) # get a list of all cluster labels from the other method (m)
-
-#     matrix = {} # save the matrix as a dict
-#     for c1 in min_clusters:
-#         for c2 in m_clusters:
-#             set1 = set(min_clusters_table[min_clusters_table == c1].index)
-#             set2 = set(m_clusters_table[m_clusters_table == c2].index)
-#             matrix[(c1,c2)] = jaccard_index(set1, set2)
-
-#     return matrix
 
 
 '''
@@ -158,7 +137,7 @@ def vote(labels):
 
 
 '''
-Consensus cluster.
+Consensus cluster by matching clusters between methods and relabeling them appropriately. Items without majority vote for cluster label are outliers.
 '''
 def consensusCluster(cluster_table):
 
@@ -169,19 +148,11 @@ def consensusCluster(cluster_table):
 
     for m in methods:
         label_key = getNewLabels(cluster_table[min_method], cluster_table[m]) # a dict where the key is the cluster label in the 'm' method and the value is the cluster label in the 'min' method that has the highest jaccard index
-        # cluster_table[m].replace(label_key, inplace=True) # relabel clusters SLOWER
         cluster_table[m] = cluster_table[m].map(label_key).fillna(cluster_table[m]) # relabel clusters FASTER
 
     # vote
     consensus_labels = [vote(row) for row in cluster_table.to_numpy()] # a list of clusters labels (or nan) ordered for each item ID in cluster_table
     cluster_table[CONSENSUS] = consensus_labels # add results to table
-    #return cluster_table
-
-    ## OLD WAY
-    # make dict with key = index (aka item ID) and value is consensus cluster label
-    # consensus_results = dict(zip(cluster_table.index, consensus_labels))
-    # return consensus_results
-    
 
 
 '''
@@ -199,6 +170,18 @@ if __name__ == '__main__':
 
     id = args.id # the header of the sample/cell/drug/item ID column
 
+    # whether to read and write csv or tsv
+    if args.tab:
+        delimiter = '\t'
+        extension = 'tsv'
+    else:
+        delimiter = ','
+        extension = 'csv'
+
+    # get data prefix for outpur files
+    cluster_prefix = getDataName(args.input[0])
+    data_prefix = getDataName(args.data)
+
     # get user-defined output dir (strip last slash if present) or set to current
     if args.output is None:
         output = '.'
@@ -206,7 +189,6 @@ if __name__ == '__main__':
         output = args.output[:-1]
     else:
         output = args.output
-
 
     # if input file has correct format, make a matrix from it
     cluster_table = pd.DataFrame() # a df where cell ID is the index and each column is the cluster assignment from a different algorithm
@@ -217,31 +199,20 @@ if __name__ == '__main__':
         else:
             print(f'{file} is incorrectly formatted.')
 
-    
+    # perform consensus clustering
+    consensusCluster(cluster_table)
 
-    # try:
-    #     unlabeled = cluster_table[CONSENSUS].isnull().values.any()
-    # except KeyError:
-    #     unlabeled = True
+    # get item ID's that need to be re-clustered in the next iteration
+    recluster_ids = cluster_table[cluster_table[CONSENSUS].isnull()].index
 
-    # while unlabeled == True:
+    # get items that need to be reclustered
+    data = pd.read_csv(args.data, delimiter=delimiter, index_col=id)
+    recluster_data = data.loc[recluster_ids]
 
-    #     sub_cluster_table = consensusCluster(unlabeled_cluster_table) 
-    #     cluster_table.loc[sub_cluster_table.index] = sub_cluster_table
+    # write data to recluster
+    recluster_data.to_csv(f'{output}/{data_prefix}-outliers.{extension}', sep=delimiter)
 
-    #     # get unlabeled items
-    #     unlabeled_cluster_table = cluster_table[cluster_table[CONSENSUS].isnull()]
-
-    ## OLD WAY
-    # res = consensusCluster(cluster_table)
-    # cluster_table[CONSENSUS] = cluster_table.index
-    # cluster_table[CONSENSUS] = cluster_table[CONSENSUS].map(res).fillna(cluster_table[CONSENSUS])
-
-    ## CURRENT WAY
-    # sub_cluster_table = consensusCluster(cluster_table) 
-    #cluster_table[CONSENSUS] = np.nan
-    # cluster_table.loc[sub_cluster_table.index] = sub_cluster_table
-    # cluster_table.combine_first(sub_cluster_table) # ALTERNATIVE METHOD. NOT SURE WHICH IS FASTER
-
-    consensusCluster(cluster_table) 
-    print(cluster_table)
+    # write item cluster labels
+    cluster_table = cluster_table.dropna()
+    cluster_table[CONSENSUS] = cluster_table[CONSENSUS].astype(int)
+    cluster_table.to_csv(f'{output}/{cluster_prefix}-consensus.{extension}', sep=delimiter, columns=[CONSENSUS])
