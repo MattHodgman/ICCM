@@ -103,18 +103,18 @@ def getMinMethod(cluster_table):
 '''
 Construct a confusion matrix from clusters from different methods.
 '''
-def getMatrix(min_clusters_table, m_clusters_table):
-    min_clusters = pd.unique(min_clusters_table) # get a list of all cluster labels from the min method (min)
-    m_clusters = pd.unique(m_clusters_table) # get a list of all cluster labels from the other method (m)
+# def getMatrix(min_clusters_table, m_clusters_table):
+#     min_clusters = pd.unique(min_clusters_table) # get a list of all cluster labels from the min method (min)
+#     m_clusters = pd.unique(m_clusters_table) # get a list of all cluster labels from the other method (m)
 
-    matrix = {} # save the matrix as a dict
-    for c1 in min_clusters:
-        for c2 in m_clusters:
-            set1 = set(min_clusters_table[min_clusters_table == c1].index)
-            set2 = set(m_clusters_table[m_clusters_table == c2].index)
-            matrix[(c1,c2)] = jaccard_index(set1, set2)
+#     matrix = {} # save the matrix as a dict
+#     for c1 in min_clusters:
+#         for c2 in m_clusters:
+#             set1 = set(min_clusters_table[min_clusters_table == c1].index)
+#             set2 = set(m_clusters_table[m_clusters_table == c2].index)
+#             matrix[(c1,c2)] = jaccard_index(set1, set2)
 
-    return matrix
+#     return matrix
 
 
 '''
@@ -127,7 +127,6 @@ def getNewLabels(min_clusters_table, m_clusters_table):
     m_clusters = pd.unique(m_clusters_table)
     min_clusters = pd.unique(min_clusters_table)
 
-    # for every cluster label in the method, find the most similar cluster label in the min method (using jaccard index)
     for c_label1 in m_clusters:
         indices = {}
         for c_label2 in min_clusters:
@@ -176,8 +175,9 @@ def consensusCluster(cluster_table):
     # vote
     consensus_labels = [vote(row) for row in cluster_table.to_numpy()] # a list of clusters labels (or nan) ordered for each item ID in cluster_table
     cluster_table[CONSENSUS] = consensus_labels # add results to table
-    return cluster_table
+    #return cluster_table
 
+    ## OLD WAY
     # make dict with key = index (aka item ID) and value is consensus cluster label
     # consensus_results = dict(zip(cluster_table.index, consensus_labels))
     # return consensus_results
@@ -217,12 +217,31 @@ if __name__ == '__main__':
         else:
             print(f'{file} is incorrectly formatted.')
 
+    
+
+    # try:
+    #     unlabeled = cluster_table[CONSENSUS].isnull().values.any()
+    # except KeyError:
+    #     unlabeled = True
+
+    # while unlabeled == True:
+
+    #     sub_cluster_table = consensusCluster(unlabeled_cluster_table) 
+    #     cluster_table.loc[sub_cluster_table.index] = sub_cluster_table
+
+    #     # get unlabeled items
+    #     unlabeled_cluster_table = cluster_table[cluster_table[CONSENSUS].isnull()]
+
+    ## OLD WAY
     # res = consensusCluster(cluster_table)
     # cluster_table[CONSENSUS] = cluster_table.index
     # cluster_table[CONSENSUS] = cluster_table[CONSENSUS].map(res).fillna(cluster_table[CONSENSUS])
 
-    sub_cluster_table = consensusCluster(cluster_table) 
-    cluster_table.loc[sub_cluster_table.index] = sub_cluster_table
+    ## CURRENT WAY
+    # sub_cluster_table = consensusCluster(cluster_table) 
+    #cluster_table[CONSENSUS] = np.nan
+    # cluster_table.loc[sub_cluster_table.index] = sub_cluster_table
     # cluster_table.combine_first(sub_cluster_table) # ALTERNATIVE METHOD. NOT SURE WHICH IS FASTER
 
+    consensusCluster(cluster_table) 
     print(cluster_table)
