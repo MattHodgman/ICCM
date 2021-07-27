@@ -15,6 +15,7 @@ def parseArgs():
     parser.add_argument('-c', '--id', help='The name of the column that contains the item ID.', type=str, required=True)
     parser.add_argument('-d', '--data', help='The orignal file that was used for clustering.', type=str, required=True)
     parser.add_argument('-t', '--tab', help='Flag to indicate that input files are tab delimited.', action='store_true', required=False)
+    parser.add_argument('-v', '--verbose', help='Flag to print information about the consensus clustering.', action='store_true', required=False)
     args = parser.parse_args()
     return args
 
@@ -190,6 +191,9 @@ if __name__ == '__main__':
     else:
         output = args.output
 
+    if args.verbose:
+        print('Reading files...')
+
     # if input file has correct format, make a matrix from it
     cluster_table = pd.DataFrame() # a df where cell ID is the index and each column is the cluster assignment from a different algorithm
     for file in args.input:
@@ -199,8 +203,14 @@ if __name__ == '__main__':
         else:
             print(f'{file} is incorrectly formatted.')
 
+    if args.verbose:
+        print('Performing consensus clustering...')
+
     # perform consensus clustering
     consensusCluster(cluster_table)
+
+    if args.verbose:
+        print('Retrieving outlier data for reclustering...')
 
     # get item ID's that need to be re-clustered in the next iteration
     recluster_ids = cluster_table[cluster_table[CONSENSUS].isnull()].index
@@ -209,6 +219,9 @@ if __name__ == '__main__':
     data = pd.read_csv(args.data, delimiter=delimiter, index_col=id)
     recluster_data = data.loc[recluster_ids]
 
+    if args.verbose:
+        print('Writing output files...')
+
     # write data to recluster
     recluster_data.to_csv(f'{output}/{data_prefix}-outliers.{extension}', sep=delimiter)
 
@@ -216,3 +229,8 @@ if __name__ == '__main__':
     cluster_table = cluster_table.dropna()
     cluster_table[CONSENSUS] = cluster_table[CONSENSUS].astype(int)
     cluster_table.to_csv(f'{output}/{cluster_prefix}-consensus.{extension}', sep=delimiter, columns=[CONSENSUS])
+
+    if args.verbose:
+        print('Done.')
+        print(f'{len(cluster_table.index)} ({(len(cluster_table.index) / (len(recluster_data.index) + len(cluster_table.index))) * 100:.2f}%) items clustered into {len(pd.unique(cluster_table[CONSENSUS]))} clusters.')
+        print(f'{len(recluster_data.index)} ({(len(recluster_data.index) / (len(recluster_data.index) + len(cluster_table.index))) * 100:.2f}%) outlier items to be re-clustered in next iteration.')
