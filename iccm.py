@@ -153,7 +153,7 @@ def consensusCluster(cluster_table):
 
     # vote
     consensus_labels = [vote(row) for row in cluster_table.to_numpy()] # a list of clusters labels (or nan) ordered for each item ID in cluster_table
-    cluster_table[CONSENSUS] = consensus_labels # add results to table
+    cluster_table[CLUSTER] = consensus_labels # add results to table
 
 
 '''
@@ -164,7 +164,7 @@ if __name__ == '__main__':
     # constants
     CLUSTER = 'Cluster' # the header of the cluster assignmnet column
     METHOD = 'Method' # the header of the method column
-    CONSENSUS = 'Consensus' # the header of the consensus cluster label
+    # CONSENSUS = 'Consensus' # the header of the consensus cluster label
 
     # parse arguments
     args = parseArgs()
@@ -213,7 +213,7 @@ if __name__ == '__main__':
         print('Retrieving outlier data for reclustering...')
 
     # get item ID's that need to be re-clustered in the next iteration
-    recluster_ids = cluster_table[cluster_table[CONSENSUS].isnull()].index
+    recluster_ids = cluster_table[cluster_table[CLUSTER].isnull()].index
 
     # get items that need to be reclustered
     data = pd.read_csv(args.data, delimiter=delimiter, index_col=id)
@@ -227,10 +227,12 @@ if __name__ == '__main__':
 
     # write item cluster labels
     cluster_table = cluster_table.dropna()
-    cluster_table[CONSENSUS] = cluster_table[CONSENSUS].astype(int)
-    cluster_table.to_csv(f'{output}/{cluster_prefix}-consensus.{extension}', sep=delimiter, columns=[CONSENSUS])
+    # max = max(cluster_table[CLUSTER])
+    # cluster_table[CLUSTER] = cluster_table[CLUSTER].map({np.nan : max + 1}).fillna(cluster_table[CLUSTER])
+    cluster_table[CLUSTER] = cluster_table[CLUSTER].astype(int)
+    cluster_table.to_csv(f'{output}/{cluster_prefix}-consensus.{extension}', sep=delimiter, columns=[CLUSTER])
 
     if args.verbose:
         print('Done.')
-        print(f'{len(cluster_table.index)} ({(len(cluster_table.index) / (len(recluster_data.index) + len(cluster_table.index))) * 100:.2f}%) items clustered into {len(pd.unique(cluster_table[CONSENSUS]))} clusters.')
+        print(f'{len(cluster_table.index)} ({(len(cluster_table.index) / (len(recluster_data.index) + len(cluster_table.index))) * 100:.2f}%) items clustered into {len(pd.unique(cluster_table[CLUSTER]))} clusters.')
         print(f'{len(recluster_data.index)} ({(len(recluster_data.index) / (len(recluster_data.index) + len(cluster_table.index))) * 100:.2f}%) outlier items to be re-clustered in next iteration.')
