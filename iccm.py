@@ -13,7 +13,7 @@ def parseArgs():
     parser.add_argument('-i', '--input', help='Input cell cluster assignment files.', nargs='*', action='store', dest='input', required=True)
     parser.add_argument('-o', '--output', help='The directory to which output files will be saved.', type=str, required=False)
     parser.add_argument('-c', '--id', help='The name of the column that contains the item ID.', type=str, required=True)
-    parser.add_argument('-d', '--data', help='The orignal file that was used for clustering.', type=str, required=True)
+    parser.add_argument('-d', '--data', help='The orignal file that was used for clustering.', type=str, required=False)
     parser.add_argument('-t', '--tab', help='Flag to indicate that input files are tab delimited.', action='store_true', required=False)
     parser.add_argument('-v', '--verbose', help='Flag to print information about the consensus clustering.', action='store_true', required=False)
     args = parser.parse_args()
@@ -181,7 +181,8 @@ if __name__ == '__main__':
 
     # get data prefix for outpur files
     cluster_prefix = getDataName(args.input[0])
-    data_prefix = getDataName(args.data)
+    if args.data != None:
+        data_prefix = getDataName(args.data)
 
     # get user-defined output dir (strip last slash if present) or set to current
     if args.output is None:
@@ -215,15 +216,18 @@ if __name__ == '__main__':
     # get item ID's that need to be re-clustered in the next iteration
     recluster_ids = cluster_table[cluster_table[CLUSTER].isnull()].index
 
-    # get items that need to be reclustered
-    data = pd.read_csv(args.data, delimiter=delimiter, index_col=id)
-    recluster_data = data.loc[recluster_ids]
+    if args.data != None:
+
+        # get items that need to be reclustered
+        data = pd.read_csv(args.data, delimiter=delimiter, index_col=id)
+        recluster_data = data.loc[recluster_ids]
 
     if args.verbose:
         print('Writing output files...')
 
-    # write data to recluster
-    recluster_data.to_csv(f'{output}/{data_prefix}-outliers.{extension}', sep=delimiter)
+    if args.data != None:
+        # write data to recluster
+        recluster_data.to_csv(f'{output}/{data_prefix}-outliers.{extension}', sep=delimiter)
 
     # write item cluster labels
     cluster_table = cluster_table.dropna()
@@ -234,5 +238,5 @@ if __name__ == '__main__':
 
     if args.verbose:
         print('Done.')
-        print(f'{len(cluster_table.index)} ({(len(cluster_table.index) / (len(recluster_data.index) + len(cluster_table.index))) * 100:.2f}%) items clustered into {len(pd.unique(cluster_table[CLUSTER]))} clusters.')
-        print(f'{len(recluster_data.index)} ({(len(recluster_data.index) / (len(recluster_data.index) + len(cluster_table.index))) * 100:.2f}%) outlier items to be re-clustered in next iteration.')
+        print(f'{len(cluster_table.index)} ({(len(cluster_table.index) / (len(recluster_ids) + len(cluster_table.index))) * 100:.2f}%) items clustered into {len(pd.unique(cluster_table[CLUSTER]))} clusters.')
+        print(f'{len(recluster_ids)} ({(len(recluster_ids) / (len(recluster_ids) + len(cluster_table.index))) * 100:.2f}%) outlier items to be re-clustered in next iteration.')
