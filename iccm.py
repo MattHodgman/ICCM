@@ -16,6 +16,7 @@ def parseArgs():
     parser.add_argument('-d', '--data', help='The orignal file that was used for clustering.', type=str, required=False)
     parser.add_argument('-t', '--tab', help='Flag to indicate that input files are tab delimited.', action='store_true', required=False)
     parser.add_argument('-v', '--verbose', help='Flag to print information about the consensus clustering.', action='store_true', required=False)
+    parser.add_argument('-z', '--outliers', help='Flag to keep outliers in output file under the cluster label: 0.', action='store_true', required=False)
     args = parser.parse_args()
     return args
 
@@ -230,9 +231,13 @@ if __name__ == '__main__':
         recluster_data.to_csv(f'{output}/{data_prefix}-outliers.{extension}', sep=delimiter)
 
     # write item cluster labels
-    cluster_table = cluster_table.dropna()
-    # max = max(cluster_table[CLUSTER])
-    # cluster_table[CLUSTER] = cluster_table[CLUSTER].map({np.nan : max + 1}).fillna(cluster_table[CLUSTER])
+    if args.outliers:
+        cluster_table[CLUSTER] = cluster_table[CLUSTER] + 1 # increment cluster labels
+        cluster_table[CLUSTER] = cluster_table[CLUSTER].map({np.nan : 0}).fillna(cluster_table[CLUSTER]) # set outliers to label '0'
+    else:
+        cluster_table = cluster_table.dropna()
+        max = max(cluster_table[CLUSTER])
+
     cluster_table[CLUSTER] = cluster_table[CLUSTER].astype(int)
     cluster_table.to_csv(f'{output}/{cluster_prefix}-consensus.{extension}', sep=delimiter, columns=[CLUSTER])
 
