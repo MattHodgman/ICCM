@@ -2,8 +2,6 @@ import argparse
 import pandas as pd
 from collections import Counter
 import numpy as np
-import os
-
 
 '''
 Parse arguments.
@@ -17,6 +15,7 @@ def parseArgs():
     parser.add_argument('-t', '--tab', help='Flag to indicate that input files are tab delimited.', action='store_true', required=False)
     parser.add_argument('-v', '--verbose', help='Flag to print information about the consensus clustering.', action='store_true', required=False)
     parser.add_argument('-z', '--outliers', help='Flag to keep outliers in output file under the cluster label: 0.', action='store_true', required=False)
+    parser.add_argument('-k', '--clusters', help='The file that contains cluster labels from previous iterations.', type=str, required=False)
     args = parser.parse_args()
     return args
 
@@ -28,6 +27,7 @@ def getDataName(path):
     fileName = path.split('/')[-1] # get filename from end of input path
     dataName = fileName[:fileName.rfind('.')] # get data name by removing extension from file name
     return dataName
+
 
 '''
 Get the header from an input csv file.
@@ -217,8 +217,11 @@ if __name__ == '__main__':
     # get item ID's that need to be re-clustered in the next iteration
     recluster_ids = cluster_table[cluster_table[CLUSTER].isnull()].index
 
-    if args.data != None:
+    # notify user if all items were clustered and iteration is complete
+    if len(recluster_ids) == 0 and args.verbose:
+        print('No outlier items.')
 
+    if args.data != None and len(recluster_ids) > 0:
         # get items that need to be reclustered
         data = pd.read_csv(args.data, delimiter=delimiter, index_col=id)
         recluster_data = data.loc[recluster_ids]
@@ -226,7 +229,7 @@ if __name__ == '__main__':
     if args.verbose:
         print('Writing output files...')
 
-    if args.data != None:
+    if args.data != None and len(recluster_ids) > 0:
         # write data to recluster
         recluster_data.to_csv(f'{output}/{data_prefix}-outliers.{extension}', sep=delimiter)
         if args.verbose:
@@ -245,6 +248,7 @@ if __name__ == '__main__':
     if args.verbose:
         print(f'Consensus cluster labels are in the file: {output}/{cluster_prefix}-consensus.{extension}')
 
+    # final stats
     if args.verbose:
         print('Done.')
         print(f'{len(cluster_table.index)} ({(len(cluster_table.index) / (len(recluster_ids) + len(cluster_table.index))) * 100:.2f}%) items clustered into {len(pd.unique(cluster_table[CLUSTER]))} clusters.')
