@@ -159,6 +159,34 @@ def consensusCluster(cluster_table):
 
 
 '''
+If a previous consensus cluster file is provided, update it to contain the latest iteration item cluster labels
+'''
+def updateConsensusClusters(file):
+    prev_clusters = pd.read_csv(file, delimiter=delimiter, index_col=id) # get previous consensus cluster labels for items
+    max = prev_clusters[CLUSTER].max() # get max cluster label
+    min = cluster_table[CLUSTER].min() # get min cluster label from latest iteration
+
+    # increment latest cluster labels appropriately (might start at 0 or 1?)
+    offset = abs(min - max) # find the difference between the last max and the latest min
+    increment = offset + 1 # set increment so that the min cluster label in the latest iteration becomes the next label from the previous ones
+    cluster_table[CLUSTER] = cluster_table[CLUSTER] + increment # increment latest cluster labels
+
+    # update previous cluster labels table
+    # if latest items are in prev_clusters, update cluster label, otherwise append rows
+    contains_all = all(elem in list(prev_clusters.index) for elem in list(cluster_table.index))
+    if contains_all:
+        prev_clusters.update(cluster_table)
+    else:
+        constains_any = any(item in list(prev_clusters.index)  for item in list(cluster_table.index))
+        if not constains_any:
+            prev_clusters.append(cluster_table)
+        else:
+            print('ERROR. I have not coded this yet.')
+
+    return prev_clusters
+    
+
+'''
 Get and write the input data of outlier items that need to be re-consensus clustered in the next iteration.
 '''
 def writeOutlierData(recluster_ids):
@@ -169,9 +197,9 @@ def writeOutlierData(recluster_ids):
 
     # write data to recluster
     if args.data != None and len(recluster_ids) > 0:
-        recluster_data.to_csv(f'{output}/{data_prefix}-outliers.{extension}', sep=delimiter)
+        recluster_data.to_csv(f'{output}/{data_prefix}-iteration-outliers.{extension}', sep=delimiter)
         if args.verbose:
-            print(f'Items to recluster are in the file: {output}/{data_prefix}-outliers.{extension}')
+            print(f'Items to recluster are in the file: {output}/{data_prefix}-iteration-outliers.{extension}')
 
 
 '''
@@ -182,13 +210,15 @@ def writeConsensusClusters(cluster_table):
     if args.outliers:
         cluster_table[CLUSTER] = cluster_table[CLUSTER] + 1 # increment cluster labels
         cluster_table[CLUSTER] = cluster_table[CLUSTER].map({np.nan : 0}).fillna(cluster_table[CLUSTER]) # set outliers to label '0'
+        if args.verbose:
+            print('Outlier items have the cluster label: 0')
     else:
         cluster_table = cluster_table.dropna()
 
     cluster_table[CLUSTER] = cluster_table[CLUSTER].astype(int)
-    cluster_table.to_csv(f'{output}/{cluster_prefix}-consensus.{extension}', sep=delimiter, columns=[CLUSTER])
+    cluster_table.to_csv(f'{output}/{cluster_prefix}-iteration-consensus.{extension}', sep=delimiter, columns=[CLUSTER])
     if args.verbose:
-        print(f'Consensus cluster labels are in the file: {output}/{cluster_prefix}-consensus.{extension}')
+        print(f'Consensus cluster labels are in the file: {output}/{cluster_prefix}-iteration-consensus.{extension}')
 
 
 '''
@@ -199,7 +229,6 @@ if __name__ == '__main__':
     # constants
     CLUSTER = 'Cluster' # the header of the cluster assignmnet column
     METHOD = 'Method' # the header of the method column
-    # CONSENSUS = 'Consensus' # the header of the consensus cluster label
 
     # parse arguments
     args = parseArgs()
@@ -250,6 +279,13 @@ if __name__ == '__main__':
 
     # get item ID's that need to be re-clustered in the next iteration
     recluster_ids = cluster_table[cluster_table[CLUSTER].isnull()].index
+
+    # update running consensus clusters file
+    if args.clusters != None:
+        complete_cluster_table = updateConsensusClusters(args.clusters)
+        complete_cluster_table.to_csv(f'{output}/{cluster_prefix}-running-consensus.{extension}', sep=delimiter, columns=[CLUSTER])
+        if args.verbose:
+            print(f'Wrote running consensus clusters to: {output}/{cluster_prefix}-running-consensus.{extension}')
     
     if args.verbose:
         print('Writing output files...')
