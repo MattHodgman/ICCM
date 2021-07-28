@@ -3,6 +3,7 @@ import pandas as pd
 from collections import Counter
 import numpy as np
 
+
 '''
 Parse arguments.
 '''
@@ -158,6 +159,39 @@ def consensusCluster(cluster_table):
 
 
 '''
+Get and write the input data of outlier items that need to be re-consensus clustered in the next iteration.
+'''
+def writeOutlierData(recluster_ids):
+    # get items that need to be reclustered
+    if args.data != None and len(recluster_ids) > 0:
+        data = pd.read_csv(args.data, delimiter=delimiter, index_col=id)
+        recluster_data = data.loc[recluster_ids]
+
+    # write data to recluster
+    if args.data != None and len(recluster_ids) > 0:
+        recluster_data.to_csv(f'{output}/{data_prefix}-outliers.{extension}', sep=delimiter)
+        if args.verbose:
+            print(f'Items to recluster are in the file: {output}/{data_prefix}-outliers.{extension}')
+
+
+'''
+Format consensus clustered items for output
+'''
+def writeConsensusClusters(cluster_table):
+    # write item cluster labels
+    if args.outliers:
+        cluster_table[CLUSTER] = cluster_table[CLUSTER] + 1 # increment cluster labels
+        cluster_table[CLUSTER] = cluster_table[CLUSTER].map({np.nan : 0}).fillna(cluster_table[CLUSTER]) # set outliers to label '0'
+    else:
+        cluster_table = cluster_table.dropna()
+
+    cluster_table[CLUSTER] = cluster_table[CLUSTER].astype(int)
+    cluster_table.to_csv(f'{output}/{cluster_prefix}-consensus.{extension}', sep=delimiter, columns=[CLUSTER])
+    if args.verbose:
+        print(f'Consensus cluster labels are in the file: {output}/{cluster_prefix}-consensus.{extension}')
+
+
+'''
 Main.
 '''
 if __name__ == '__main__':
@@ -212,41 +246,16 @@ if __name__ == '__main__':
     consensusCluster(cluster_table)
 
     if args.verbose:
-        print('Retrieving outlier data for reclustering...')
+        print('Retrieving outliers...')
 
     # get item ID's that need to be re-clustered in the next iteration
     recluster_ids = cluster_table[cluster_table[CLUSTER].isnull()].index
-
-    # notify user if all items were clustered and iteration is complete
-    if len(recluster_ids) == 0 and args.verbose:
-        print('No outlier items.')
-
-    if args.data != None and len(recluster_ids) > 0:
-        # get items that need to be reclustered
-        data = pd.read_csv(args.data, delimiter=delimiter, index_col=id)
-        recluster_data = data.loc[recluster_ids]
-
+    
     if args.verbose:
         print('Writing output files...')
 
-    if args.data != None and len(recluster_ids) > 0:
-        # write data to recluster
-        recluster_data.to_csv(f'{output}/{data_prefix}-outliers.{extension}', sep=delimiter)
-        if args.verbose:
-            print(f'Items to recluster are in the file: {output}/{data_prefix}-outliers.{extension}')
-
-    # write item cluster labels
-    if args.outliers:
-        cluster_table[CLUSTER] = cluster_table[CLUSTER] + 1 # increment cluster labels
-        cluster_table[CLUSTER] = cluster_table[CLUSTER].map({np.nan : 0}).fillna(cluster_table[CLUSTER]) # set outliers to label '0'
-    else:
-        cluster_table = cluster_table.dropna()
-        max = max(cluster_table[CLUSTER])
-
-    cluster_table[CLUSTER] = cluster_table[CLUSTER].astype(int)
-    cluster_table.to_csv(f'{output}/{cluster_prefix}-consensus.{extension}', sep=delimiter, columns=[CLUSTER])
-    if args.verbose:
-        print(f'Consensus cluster labels are in the file: {output}/{cluster_prefix}-consensus.{extension}')
+    writeOutlierData(recluster_ids) # write outlier data
+    writeConsensusClusters(cluster_table) # write consensus cluster labels
 
     # final stats
     if args.verbose:
