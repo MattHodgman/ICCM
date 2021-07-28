@@ -229,6 +229,8 @@ if __name__ == '__main__':
     if args.data != None:
         # write data to recluster
         recluster_data.to_csv(f'{output}/{data_prefix}-outliers.{extension}', sep=delimiter)
+        if args.verbose:
+            print(f'Items to recluster are in the file: {output}/{data_prefix}-outliers.{extension}')
 
     # write item cluster labels
     if args.outliers:
@@ -240,6 +242,8 @@ if __name__ == '__main__':
 
     cluster_table[CLUSTER] = cluster_table[CLUSTER].astype(int)
     cluster_table.to_csv(f'{output}/{cluster_prefix}-consensus.{extension}', sep=delimiter, columns=[CLUSTER])
+    if args.verbose:
+        print(f'Consensus cluster labels are in the file: {output}/{cluster_prefix}-consensus.{extension}')
 
     if args.verbose:
         print('Done.')
