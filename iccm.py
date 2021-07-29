@@ -17,6 +17,8 @@ def parseArgs():
     parser.add_argument('-v', '--verbose', help='Flag to print information about the consensus clustering.', action='store_true', required=False)
     parser.add_argument('-z', '--outliers', help='Flag to keep outliers in output file under the cluster label: 0.', action='store_true', required=False)
     parser.add_argument('-k', '--clusters', help='The file that contains cluster labels from previous iterations.', type=str, required=False)
+    parser.add_argument('-n', '--name', help='The name of this dataset for output file naming consistency.', type=str, required=False)
+    parser.add_argument('-r', '--iter', help='The iteration number.', type=str, required=False)
     args = parser.parse_args()
     return args
 
@@ -170,22 +172,22 @@ def updateConsensusClusters(file):
     offset = abs(min - max) # find the difference between the last max and the latest min
     increment = offset + 1 # set increment so that the min cluster label in the latest iteration becomes the next label from the previous ones
     cluster_table[CLUSTER] = cluster_table[CLUSTER] + increment # increment latest cluster labels
+    if args.verbose:
+        print(f'This iteration cluster labels were incremented by {increment}')
+
+    clusters_to_add = cluster_table[CLUSTER].dropna().to_frame()
 
     # update previous cluster labels table
     # if latest items are in prev_clusters, update cluster label, otherwise append rows
     contains_all = all(elem in list(prev_clusters.index) for elem in list(cluster_table.index))
     if contains_all:
-        prev_clusters.update(cluster_table)
+        prev_clusters.update(clusters_to_add)
     else:
         constains_any = any(item in list(prev_clusters.index) for item in list(cluster_table.index))
         if not constains_any:
-            prev_clusters = prev_clusters.append(cluster_table).sort_index()
+            prev_clusters = prev_clusters.append(clusters_to_add).sort_index()
         else:
             print('ERROR. I have not coded this yet.')
-
-    # sanity check
-    if prev_clusters.isnull().any().any():
-        print('NaN values is running clusters files!')
 
     # write cluster labels as ints
     prev_clusters[CLUSTER] = prev_clusters[CLUSTER].astype(int)
@@ -204,9 +206,9 @@ def writeOutlierData(recluster_ids):
 
     # write data to recluster
     if args.data != None and len(recluster_ids) > 0:
-        recluster_data.to_csv(f'{output}/{data_prefix}-iteration-outliers.{extension}', sep=delimiter)
+        recluster_data.to_csv(f'{output}/{data_prefix}-iter-outliers.{extension}', sep=delimiter)
         if args.verbose:
-            print(f'Items to recluster are in the file: {output}/{data_prefix}-iteration-outliers.{extension}')
+            print(f'Items to recluster are in the file: {output}/{data_prefix}-iter-outliers.{extension}')
 
 
 '''
@@ -223,9 +225,9 @@ def writeConsensusClusters(cluster_table):
         cluster_table = cluster_table.dropna()
 
     cluster_table[CLUSTER] = cluster_table[CLUSTER].astype(int)
-    cluster_table.to_csv(f'{output}/{cluster_prefix}-iteration-consensus.{extension}', sep=delimiter, columns=[CLUSTER])
+    cluster_table.to_csv(f'{output}/{cluster_prefix}-iter-consensus.{extension}', sep=delimiter, columns=[CLUSTER])
     if args.verbose:
-        print(f'Consensus cluster labels are in the file: {output}/{cluster_prefix}-iteration-consensus.{extension}')
+        print(f'Consensus cluster labels are in the file: {output}/{cluster_prefix}-iter-consensus.{extension}')
 
 
 '''
@@ -250,10 +252,20 @@ if __name__ == '__main__':
         delimiter = ','
         extension = 'csv'
 
-    # get data prefix for outpur files
-    cluster_prefix = getDataName(args.input[0])
+    # get iteration number if provided
+    if args.iter != None:
+        iter = '-' + args.iter
+
+    # get prefix for output files
+    if args.name == None:
+        cluster_prefix = getDataName(args.input[0]) + iter
+    else:
+        cluster_prefix = args.name + iter
     if args.data != None:
-        data_prefix = getDataName(args.data)
+        if args.name == None:
+            data_prefix = getDataName(args.data) + iter
+        else:
+            data_prefix = args.name + iter
 
     # get user-defined output dir (strip last slash if present) or set to current
     if args.output is None:
