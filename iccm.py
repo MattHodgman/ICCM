@@ -177,9 +177,9 @@ def updateConsensusClusters(file):
     if contains_all:
         prev_clusters.update(cluster_table)
     else:
-        constains_any = any(item in list(prev_clusters.index)  for item in list(cluster_table.index))
+        constains_any = any(item in list(prev_clusters.index) for item in list(cluster_table.index))
         if not constains_any:
-            prev_clusters.append(cluster_table)
+            prev_clusters = prev_clusters.append(cluster_table).sort_index()
         else:
             print('ERROR. I have not coded this yet.')
 
