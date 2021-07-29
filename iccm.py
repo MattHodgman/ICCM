@@ -183,6 +183,13 @@ def updateConsensusClusters(file):
         else:
             print('ERROR. I have not coded this yet.')
 
+    # sanity check
+    if prev_clusters.isnull().any().any():
+        print('NaN values is running clusters files!')
+
+    # write cluster labels as ints
+    prev_clusters[CLUSTER] = prev_clusters[CLUSTER].astype(int)
+
     return prev_clusters
     
 
